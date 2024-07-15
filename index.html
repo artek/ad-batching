@@ -1,0 +1,173 @@
+<html>
+  <head>
+    <script
+      async
+      src="https://www.googletagservices.com/tag/js/gpt.js"
+    ></script>
+    <script
+      async
+      src="https://cdn.jsdelivr.net/npm/prebid.js@latest/dist/not-for-prod/prebid.js"
+    ></script>
+
+    <style>
+      .slot {
+        height: 250px;
+        width: 300px;
+        display: inline-block;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>Example of Ad Batching</h2>
+
+    <div class="batch">
+      <h3>Batch 1</h3>
+      <span class="slot" id="slot1"></span>
+      <span class="slot" id="slot2"></span>
+    </div>
+
+    <div style="height: 300px"></div>
+    <p>Scroll down to request ads in the second batch</p>
+    <div style="height: 1000px"></div>
+
+    <div class="batch">
+      <h3>Batch 2</h3>
+      <span class="slot" id="slot3"></span>
+      <span class="slot" id="slot4"></span>
+    </div>
+
+    <script>
+      let gptSlots = [];
+
+      const slotsData = {
+        slot1: {
+          slotId: "slot1",
+          adUnit: "/6355419/Travel/Europe",
+          sizes: [[300, 250]],
+        },
+        slot2: {
+          slotId: "slot2",
+          adUnit: "/6355419/Travel/Europe",
+          sizes: [[300, 250]],
+        },
+        slot3: {
+          slotId: "slot3",
+          adUnit: "/6355419/Travel/Europe/France/Paris",
+          sizes: [300, 250],
+        },
+        slot4: {
+          slotId: "slot4",
+          adUnit: "/6355419/Travel/Europe",
+          sizes: [[300, 250]],
+        },
+      };
+
+      const define = (slot) => {
+        let gptSlot = googletag
+          .defineSlot(slot.adUnit, slot.sizes, slot.slotId)
+          .addService(googletag.pubads());
+
+        gptSlot.setTargeting("slotId", slot.slotId);
+
+        gptSlots.push(gptSlot);
+
+        googletag.display(slot.slotId);
+      };
+
+      const stopObserving = (slot) => {
+        observer.unobserve(slot.target);
+      };
+
+      const getSlotData = (slot) => {
+        return slotsData[slot.getAttribute("id")];
+      };
+
+      const callback = (entries) => {
+        googletag.cmd.push(function () {
+          // filter out batches outside of the viewport
+          let entriesInView = entries.filter((entry) => entry.isIntersecting);
+
+          // stop observing this batch
+          entriesInView.forEach(stopObserving);
+
+          // get ad slots in this batch
+          let currentBatch = getSlots(entriesInView);
+
+          // define all slots in the current batch
+          currentBatch.forEach(define);
+
+          // request bids for all slots in the current batch
+          runPrebidAuction(currentBatch);
+        });
+      };
+
+      const getSlots = (entries) => {
+        let slots = [];
+        entries.forEach((entry) => {
+          entry.target
+            .querySelectorAll(".slot")
+            .forEach((slot) => slots.push(getSlotData(slot)));
+        });
+        return slots;
+      };
+
+      const runPrebidAuction = (batch) => {
+        pbjs.que.push(function () {
+          batch.map((unit) => {
+            pbjs.addAdUnits(createPrebidAdUnit(unit));
+          });
+          pbjs.requestBids({
+            bidsBackHandler: initAdserver,
+          });
+        });
+      };
+
+      const initAdserver = () => {
+        // add targeting key values to GPT slots
+        pbjs.setTargetingForGPTAsync();
+        pbjs.removeAdUnit();
+        // request ads from GAM
+        googletag.pubads().refresh(gptSlots);
+        gptSlots = [];
+      };
+
+      const createPrebidAdUnit = (slot) => {
+        return {
+          code: slot.slotId,
+          mediaTypes: {
+            banner: {
+              sizes: slot.sizes,
+            },
+          },
+          bids: [
+            {
+              bidder: "appnexus",
+              params: {
+                placementId: 13144370,
+              },
+            },
+          ],
+        };
+      };
+
+      window.googletag = window.googletag || {};
+      window.googletag.cmd = window.googletag.cmd || [];
+
+      window.pbjs = window.pbjs || {};
+      window.pbjs.que = window.pbjs.que || [];
+
+      googletag.cmd.push(function () {
+        googletag.pubads().disableInitialLoad();
+        googletag.pubads().enableSingleRequest();
+        googletag.enableServices();
+      });
+
+      let batches = document.querySelectorAll(".batch");
+      let observer = new IntersectionObserver(callback);
+      batches.forEach((batch) => {
+        observer.observe(batch);
+      });
+    </script>
+  </body>
+</html>
